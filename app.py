@@ -72,6 +72,7 @@ with st.spinner("Loading TFBS matrix. May take up to 2 minutes..."):
 # -------------------------------
 # Filter matrix
 # -------------------------------
+@st.cache_data
 def filter_df(df, genes, TFs):
     df = df[df['motif_id_lower'].isin(TFs)]
     df = df[df['gene_lower'].isin(genes)]
@@ -90,6 +91,7 @@ valid_rows = [r for r in row_list if r in df['gene_lower']]
 # -----------------------------------
 # Summarize matrix
 # --------------------------------------
+@st.cache_data
 def summarize_binding_sites(df):
     sorted_df = df.sort_values(by=['gene', 'motif_id', 'strand', 'start'])
 
@@ -175,7 +177,7 @@ def create_tf_gene_matrix(df):
 # ---------------------------------
 # TF enrichment 
 # ---------------------------------
-
+@st.cache_data
 def tfbs_cluster_enrichment(binary_matrix, cluster_labels, pval_threshold=0.05):
     unique_clusters = np.unique(cluster_labels)
     enrichment_results = []
