@@ -225,6 +225,8 @@ if row_list and col_list:
     # --- Filter original df --- #
     filtered_df = filter_df(df, row_list, col_list)
 
+    del df 
+    
     if filtered_df.empty:
         st.warning("No matching rows found after filtering. Check gene and TF names.")
     else:
