@@ -2,10 +2,8 @@ streamlit
 numpy
 pandas
 scikit-learn
-sklearn.metrics
-sklearn.cluster
 scipy.stats
-statsmodels.stats.multitest
+statsmodels
 umap
 matplotlib
 seaborn
