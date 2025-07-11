@@ -2,5 +2,13 @@ streamlit
 numpy
 pandas
 scikit-learn
+sklearn.metrics
+sklearn.cluster
+scipy.stats
+statsmodels.stats.multitest
+umap
 matplotlib
 seaborn
+Random
+io
+requests
