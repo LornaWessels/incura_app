@@ -4,9 +4,7 @@ pandas
 scikit-learn
 scipy
 statsmodels
-umap
+Umap-learn
 matplotlib
 seaborn
-random
-io
 requests
