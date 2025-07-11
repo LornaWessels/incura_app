@@ -1,2 +1,2 @@
 # incura_app
-Code for Streamlit application of incur
+Code for Streamlit application of incura
