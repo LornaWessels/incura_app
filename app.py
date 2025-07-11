@@ -12,7 +12,6 @@ import random
 import io
 import requests
 
-
 np.random.seed(42)
 random.seed(42)
 
@@ -32,8 +31,6 @@ with col2:
     "with a fixed background model based on all protein coding genes in the respective organism. For more versatile functionality use the [GitHub version of InCURA](https://github.com/saezlab/incura)."
     )
 
-    
-
 # -------------------------------
 # Dataset selection
 # -------------------------------
@@ -44,135 +41,46 @@ dataset_choice = st.radio(
     horizontal=True
 )
 
-
-@st.cache_resource
-def load_df(species: str):
+# -------------------------------
+# Load Preprocessed TFBS Matrix
+# -------------------------------
+@st.cache_data
+def load_preprocessed_matrix(species: str) -> pd.DataFrame:
     urls = {
-        "Mouse": "https://zenodo.org/records/15862228/files/fimo_mouse.parquet?download=1",
-        "Human": "https://zenodo.org/records/15862228/files/fimo_human.parquet?download=1"
+        "Mouse": "https://zenodo.org/records/15866266/files/full_count_matrix_mouse.tsv?download=1",
+        "Human": "https://zenodo.org/records/15866266/files/full_count_matrix_human.tsv?download=1"
     }
-
     url = urls.get(species)
     if not url:
         raise ValueError("Invalid species selection")
 
     response = requests.get(url)
     if response.status_code != 200:
-        raise ValueError(f"Failed to download file from Zenodo. Status code: {response.status_code}")
-    
-    return pd.read_parquet(io.BytesIO(response.content))
+        raise ValueError(f"Failed to download matrix. Status: {response.status_code}")
 
-
-# Load the dataset based on user selection
-with st.spinner("Loading TFBS matrix. May take up to 2 minutes..."):
-    df = load_df(dataset_choice)
-    df["gene_lower"] = df["gene"].str.lower()
-    df["motif_id_lower"] = df["motif_id"].str.lower()
-
-# -------------------------------
-# Filter matrix
-# -------------------------------
-@st.cache_data
-def filter_df(df, genes, TFs):
-    df = df[df['motif_id_lower'].isin(TFs)]
-    df = df[df['gene_lower'].isin(genes)]
+    df = pd.read_csv(io.StringIO(response.content.decode("utf-8")), sep="\t", index_col=0)
+    df.index = df.index.str.lower()  # lowercase gene names
+    df.columns = df.columns.str.lower()  # lowercase TF names
     return df
 
-# --- Row Input ---
+with st.spinner("Loading TFBS matrix..."):
+    matrix = load_preprocessed_matrix(dataset_choice)
+
+# --- Gene Input ---
 st.subheader("Filtering for Differentially Expressed Genes")
+rows_text = st.text_area("Paste gene names here (one gene per line):", placeholder="Gene1\nGene2\nGene3")
+row_list_raw = [x.strip() for x in rows_text.replace(',', '\n').splitlines() if x.strip()]
+row_list = [x.lower() for x in row_list_raw]
+valid_rows = [r for r in row_list if r in matrix.index]
+st.markdown(f"**Genes pasted:** {len(row_list_raw)} &nbsp;&nbsp;|&nbsp;&nbsp; **Valid genes:** {len(valid_rows)}")
 
-rows_text = st.text_area(
-    "Paste gene names here (one gene per line):",
-    placeholder="Gene1\nGene2\nGene3"
-)
-row_list = [x.strip().lower() for x in rows_text.replace(',', '\n').splitlines() if x.strip()]
-valid_rows = [r for r in row_list if r in df['gene_lower']]
-
-# -----------------------------------
-# Summarize matrix
-# --------------------------------------
-@st.cache_data
-def summarize_binding_sites(df):
-    sorted_df = df.sort_values(by=['gene', 'motif_id', 'strand', 'start'])
-
-    genes, starts, ends, motifs, scores, strands = [], [], [], [], [], []
-
-    current_gene = current_motif = current_strand = None
-    current_start = current_end = total_score = count = None
-
-    for row in sorted_df.itertuples(index=False):
-        gene = row.gene
-        motif = row.motif_id
-        strand = row.strand
-        start = row.start
-        end = row.stop
-        score = row.score
-
-        if (
-            gene != current_gene or
-            motif != current_motif or
-            strand != current_strand or
-            (current_end is not None and start > current_end)
-        ):
-            if current_gene is not None:
-                genes.append(current_gene)
-                starts.append(current_start)
-                ends.append(current_end)
-                motifs.append(current_motif)
-                scores.append(total_score / count)
-                strands.append(current_strand)
-
-            current_gene = gene
-            current_motif = motif
-            current_strand = strand
-            current_start = start
-            current_end = end
-            total_score = score
-            count = 1
-        else:
-            current_end = max(current_end, end)
-            total_score += score
-            count += 1
-
-    if current_gene is not None:
-        genes.append(current_gene)
-        starts.append(current_start)
-        ends.append(current_end)
-        motifs.append(current_motif)
-        scores.append(total_score / count)
-        strands.append(current_strand)
-
-    return pd.DataFrame({
-        'symbols': genes,
-        'start': starts,
-        'end': ends,
-        'motif': motifs,
-        'score': scores,
-        'strand': strands
-    })
-
-
-# -----------------------------------
-# Count matrix
-# --------------------------------------
-@st.cache_data
-def create_tf_gene_matrix(df):
-    """
-    Create a TF-gene matrix as a pandas DataFrame where the value represents 
-    how often a gene appears as a target of a given TF.
-
-    Parameters:
-    - df (pd.DataFrame): A DataFrame with columns ['symbols', 'motif'],
-                         where each row represents a TF binding event.
-
-    Returns:
-    - tf_gene_df (pd.DataFrame): A DataFrame of shape (num_TFs, num_genes) 
-                                 with counts of TF-gene interactions.
-    """
-    # Count occurrences of (TF, gene) pairs
-    interaction_counts = df.groupby(["motif", "symbols"]).size().unstack(fill_value=0).T
-
-    return interaction_counts
+# --- TF Input ---
+st.subheader("Filtering for Transcription Factors")
+cols_text = st.text_area("Paste TF names here (or all expressed genes, one per line):", placeholder="TF1\nTF2\nTF3")
+col_list_raw = [x.strip() for x in cols_text.replace(',', '\n').splitlines() if x.strip()]
+col_list = [x.lower() for x in col_list_raw]
+valid_cols = [c for c in col_list if c in matrix.columns]
+st.markdown(f"**TFs pasted:** {len(col_list_raw)} &nbsp;&nbsp;|&nbsp;&nbsp; **Valid TFs:** {len(valid_cols)}")
 
 # ---------------------------------
 # TF enrichment 
@@ -211,45 +119,18 @@ def tfbs_cluster_enrichment(binary_matrix, cluster_labels, pval_threshold=0.05):
 
     return significant_results
 
-
-# --- Column Input ---
-st.subheader("Filtering for Transcription Factors")
-
-cols_text = st.text_area(
-    "Paste TF names here (or list of all expressed genes, one per line):",
-    placeholder="TF1\nTF2\nTF3"
-)
-col_list = [x.strip().lower() for x in cols_text.replace(',', '\n').splitlines() if x.strip()]
-valid_cols = [c for c in col_list if c in df['motif_id']]
-
 # --- Filter + Show ---
-if row_list and col_list:
-    # --- Filter original df --- #
-    filtered_df = filter_df(df, row_list, col_list)
+if valid_rows and valid_cols:
+    count_matrix = matrix.loc[valid_rows, valid_cols]
+    count_matrix = count_matrix.astype(np.float32)
+    st.success(f"Filtered to matrix with shape: {count_matrix.shape}")
 
-    del df 
-    
-    if filtered_df.empty:
+    if count_matrix.empty:
         st.warning("No matching rows found after filtering. Check gene and TF names.")
     else:
-        
-        # --- Summarize binding sites (cached) --- #
-        summary_df = summarize_binding_sites(filtered_df)
-        st.write(f"Summarized to {len(summary_df)} regions.")
-
-        del filtered_df
-        
-        # --- Create count matrix (cached) --- #
-        count_matrix = create_tf_gene_matrix(summary_df)
-        count_matrix.sort_index(inplace=True, axis=1)
-        count_matrix = count_matrix.astype(np.float32)
-        
-        del summary_df
-
         # --- UMAP ---
         reducer = umap.UMAP(n_components=2, random_state=42)
         embedding = reducer.fit_transform(count_matrix.values)
-        
 
         # --- KMeans ---
         n_clusters = st.slider("Number of clusters (KMeans)", min_value=2, max_value=10, value=4)
@@ -269,6 +150,13 @@ if row_list and col_list:
             "gene": count_matrix.index,
             "cluster": cluster_labels
         })
+
+        # Capitalise gene/TF names if desired
+        if dataset_choice == "Mouse":
+            clustered_df["gene"] = clustered_df["gene"].str.capitalize()
+        elif dataset_choice == "Human":
+            clustered_df["gene"] = clustered_df["gene"].str.upper()
+
         st.subheader("Cluster Assignments")
         st.dataframe(clustered_df)
 
@@ -332,21 +220,27 @@ if row_list and col_list:
             if enrichment_df.empty:
                 st.warning("No significantly enriched TFBS found at the specified threshold.")
             else:
-                # Remove TFBSs enriched in multiple clusters (ubiquitous)
                 tfbs_counts = enrichment_df.groupby("TFBS")["Cluster"].nunique()
                 ubiquitous_tfbs = tfbs_counts[tfbs_counts > 1].index
                 enrichment_df = enrichment_df[~enrichment_df["TFBS"].isin(ubiquitous_tfbs)]
 
-                # Keep top 10 TFBS per cluster
                 top_tfbs = (
                     enrichment_df.groupby("Cluster")
                     .apply(lambda x: x.nsmallest(10, "p_value"))
                     .reset_index(drop=True)
                 )
                 enrichment_df = enrichment_df[enrichment_df["TFBS"].isin(top_tfbs["TFBS"])]
+                
+                # Format TF names in final enrichment_df before plotting
+                if dataset_choice == "Mouse":
+                    enrichment_df["TFBS_display"] = enrichment_df["TFBS"].apply(lambda x: x.capitalize())
+                elif dataset_choice == "Human":
+                    enrichment_df["TFBS_display"] = enrichment_df["TFBS"].apply(lambda x: x.upper())
+                else:
+                    enrichment_df["TFBS_display"] = enrichment_df["TFBS"]
 
                 # Pivot and plot
-                pivot_df = enrichment_df.pivot(index="TFBS", columns="Cluster", values="corrected_pval")
+                pivot_df = enrichment_df.pivot(index="TFBS_display", columns="Cluster", values="corrected_pval")
                 pivot_df = pivot_df.sort_values(by=pivot_df.columns.tolist())
 
                 fig, ax = plt.subplots(figsize=(5, max(4, 0.3 * len(pivot_df))))
@@ -356,7 +250,6 @@ if row_list and col_list:
                 ax.set_ylabel("TFBS", fontsize=14)
                 st.pyplot(fig)
 
-                # Download table
                 csv_enrich = enrichment_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     label="📥 Download Enrichment Results (CSV)",
@@ -364,14 +257,8 @@ if row_list and col_list:
                     file_name="incura_tfbs_enrichment.csv",
                     mime="text/csv"
                 )
-
-
-
-
-
 else:
     st.warning("Please paste valid gene and TF names.")
-
 
 st.markdown(
     """
@@ -382,7 +269,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-
-
-
