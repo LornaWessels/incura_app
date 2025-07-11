@@ -2,11 +2,11 @@ streamlit
 numpy
 pandas
 scikit-learn
-scipy.stats
+scipy
 statsmodels
 umap
 matplotlib
 seaborn
-Random
+random
 io
 requests
